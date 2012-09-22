@@ -48,7 +48,7 @@ BUGS: Giving an empty string as one of the children in XML_tag will confuse
 #include <stdarg.h>
 #include <string.h>
 #include <gc/gc.h>
-
+#include <ctype.h>
 
 typedef union XML XML;
 
@@ -72,6 +72,7 @@ union XML {
 };
 
 uint XML_is_str (XML);
+uint XML_is_valid (XML);
 uint XML_strlen (XML);
 const char* XML_escape (const char*);
 const char* XML_unescape (const char*);
@@ -81,6 +82,7 @@ XML XML_get_child (XML, const char*);
 
 
 uint XML_is_str (XML xml) { return xml.tag->is_str; }
+uint XML_is_valid (XML xml) { return xml.tag != NULL; }
 
 uint XML_strlen (XML xml) {
 	uint r = 0;
@@ -281,6 +283,139 @@ XML XML_get_child (XML xml, const char* name) {
 	return (XML)(XML_Tag*)NULL;
 }
 
+uint XML_isnamechar (char c) {
+	return c && c != '>' && c != '/' && c != '"' && c != '=' && !isspace(c);
+}
+uint XML_isntnamechar (char c) { return !XML_isnamechar(c); }
+uint XML_isquote (char c) { return c == '"'; }
+uint XML_islt (char c) { return c == '<'; }
+const char* XML_extract_until (const char** pp, uint (* f ) (char)) {
+	uint i = 0;
+	while ((*pp)[i] && !f((*pp)[i])) i++;
+	if (!f((*pp)[i])) return NULL;
+	char* r = GC_malloc(i + 1);
+	memcpy(r, *pp, i);
+	r[i] = 0;
+	*pp += i;
+	return (const char*)r;
+}
+const char* XML_extract_name (const char** pp) { return XML_extract_until(pp, XML_isntnamechar); }
+void XML_eatws (const char** pp) { while (isspace(**pp)) (*pp)++; }
+
+const char* failp = 0;
+uint failspot = 0;
+XML XML_parse_tag (const char** pp) {
+	const char* p = *pp;
+	if (*p++ != '<') goto ERR_NEW;
+	XML_eatws(&p);
+	if (!*p) goto ERR_NEW;
+	const char* name = XML_extract_name(&p);
+	if (!name || !strlen(name)) goto ERR_NEW;
+	XML_eatws(&p);
+	uint n_attrs = 0;
+	XML_Attr* attrs = GC_malloc(0);
+	while (XML_isnamechar(*p)) {
+		const char* attrname = XML_extract_name(&p);
+		if (!attrname || !strlen(attrname)) goto ERR_NEW;
+		XML_eatws(&p);
+		if (*p++ != '=') goto ERR_NEW;
+		XML_eatws(&p);
+		if (*p++ != '"') goto ERR_NEW;
+		const char* attrvalesc = XML_extract_until(&p, XML_isquote);
+		if (!attrvalesc) goto ERR_NEW;
+		if (*p++ != '"') goto ERR_NEW;
+		const char* attrval = XML_unescape(attrvalesc);
+		attrs = GC_realloc(attrs, (n_attrs + 1) * sizeof(XML_Attr));
+		attrs[n_attrs].name = attrname;
+		attrs[n_attrs].value = attrval;
+		n_attrs++;
+		XML_eatws(&p);
+		if (!*p) goto ERR_NEW;
+	}
+	if (*p == '/') {
+		p++;
+		XML_eatws(&p);
+		if (*p++ != '>') goto ERR_NEW;
+		XML_Tag* r = GC_malloc(sizeof(XML_Tag));
+		r->is_str = 0;
+		r->name = name;
+		r->n_attrs = n_attrs;
+		r->attrs = attrs;
+		r->n_contents = 0;
+		r->contents = NULL;
+		*pp = p;
+		return (XML)r;
+	}
+	else if (*p == '>') {
+		p++;
+		uint n_contents = 0;
+		XML* contents = GC_malloc(0);
+		if (!*p) goto ERR_NEW;
+		for (;;) {
+			if (*p == '<') {
+				const char* tagp = p;
+				p++;
+				XML_eatws(&p);
+				if (*p == '/') {
+					p++;
+					XML_eatws(&p);
+					uint i;
+					uint namelen = strlen(name);
+					for (i = 0; i < namelen; i++)
+					if (*p++ != name[i])
+						goto ERR_NEW;
+					XML_eatws(&p);
+					if (*p++ != '>') goto ERR_NEW;
+					XML_Tag* r = GC_malloc(sizeof(XML_Tag));
+					r->is_str = 0;
+					r->name = name;
+					r->n_attrs = n_attrs;
+					r->attrs = attrs;
+					r->n_contents = n_contents;
+					r->contents = contents;
+					*pp = p;
+					return (XML)r;
+				}
+				else {
+					p = tagp;
+					XML child = XML_parse_tag(&p);
+					if (!XML_is_valid(child)) goto ERR_PROP;
+					contents = GC_realloc(contents, (n_contents + 1) * sizeof(XML));
+					contents[n_contents] = child;
+					n_contents++;
+				}
+			}
+			else {
+				const char* textesc = XML_extract_until(&p, XML_islt);
+				if (!textesc) goto ERR_NEW;
+				const char* text = XML_unescape(textesc);
+				contents = GC_realloc(contents, (n_contents + 1) * sizeof(XML));
+				contents[n_contents] = (XML)text;
+				n_contents++;
+			}
+		}
+	}
+	else goto ERR_NEW;
+	ERR_NEW:
+		failp = p;
+	ERR_PROP:
+		return (XML)(XML_Tag*)NULL;
+}
+XML XML_parse (const char* p) {
+	XML r = XML_parse_tag(&p);
+	failspot = failp - p;
+	if (*p) return (XML)(XML_Tag*)NULL;
+	else return r;
+}
+XML XML_parse_n (const char* p, uint n) {
+	char* realp = GC_malloc(n + 1);
+	memcpy(realp, p, n);
+	realp[n] = 0;
+	return XML_parse((const char*)realp);
+}
+
+
+
 void XML_test () {
 	XML my_xml = XML_tag("tag-name",
 		"attr-name-1", "attr-value-1",
@@ -298,6 +433,12 @@ void XML_test () {
 	puts(XML_as_text(child));
 	const char* val = XML_get_attr(my_xml, "attr-name-2");  // Yields "attr-value-2"
 	puts(val);
+	XML parsed = XML_parse("<wwxtp><query><command>TEST</command><position lat=\"23.01515\" long=\"-15.132\"/></query></wwxtp>");
+	if (!XML_is_valid(parsed)) {
+		fprintf(stderr, "Error: Parse failed at position %u\n", failspot);
+		exit(1);
+	}
+	puts(XML_as_text(parsed));
 }
 /*
 int main () {
