@@ -11,7 +11,7 @@ XML my_xml = XML_tag("tag-name",
 	"Some text & stuff in the tag",
 	XML_tag("child-tag",
 		NULL,  // No attributes
-		NULL,  // No children
+		NULL  // No children
 	),
 	NULL // Done with children
 )
@@ -35,6 +35,10 @@ You can get the value of an attribute of a tag by name with XML_get_attr()
 const char* val = XML_get_attr(my_xml, "attr-name-2")  // Yields "attr-value-2"
 
 TODO: Parsing a string into XML will come later.
+
+BUGS: Giving an empty string as one of the children in XML_tag will confuse
+ the parser, since it'll think it's an XML tag.  It's not possible to work
+ around this without changing the interface to something less user-friendly.
 
 
 */
@@ -71,7 +75,7 @@ uint XML_is_str (XML);
 uint XML_strlen (XML);
 const char* XML_escape (const char*);
 const char* XML_unescape (const char*);
-const char* XML_as_text (const char*);
+const char* XML_as_text (XML);
 const char* XML_get_attr (XML, const char*);
 XML XML_get_child (XML, const char*);
 
@@ -121,10 +125,10 @@ const char* XML_escape (const char* in) {
 	char* r = GC_malloc(len + 1);
 	for (i = 0, xi = 0; in[i]; i++) {
 		switch (in[i]) {
-			case '<': { memcpy(r, "&lt;", 4); xi += 4; break; }
-			case '>': { memcpy(r, "&gt;", 4); xi += 4; break; }
-			case '&': { memcpy(r, "&amp;", 5); xi += 5; break; }
-			case '"': { memcpy(r, "&quot;", 6); xi += 6; break; }
+			case '<': { memcpy(r+xi, "&lt;", 4); xi += 4; break; }
+			case '>': { memcpy(r+xi, "&gt;", 4); xi += 4; break; }
+			case '&': { memcpy(r+xi, "&amp;", 5); xi += 5; break; }
+			case '"': { memcpy(r+xi, "&quot;", 6); xi += 6; break; }
 			default: { r[xi++] = in[i]; break; }
 		}
 	}
@@ -277,31 +281,27 @@ XML XML_get_child (XML xml, const char* name) {
 	return (XML)(XML_Tag*)NULL;
 }
 
-/*
-XML XML_test () {
-	return
-	XML_tag("wwxtp", NULL,
-		XML_tag("query", NULL,
-			XML_tag("command", NULL, "TEST", NULL),
-			XML_tag("position", "lat", "23.001451", "long", "-15.23245", NULL, NULL),
-			NULL
+void XML_test () {
+	XML my_xml = XML_tag("tag-name",
+		"attr-name-1", "attr-value-1",
+		"attr-name-2", "attr-value-2",
+		NULL,  // Done with attributes
+		"Some text & stuff in the tag",
+		XML_tag("child-tag",
+			NULL,  // No attributes
+			NULL  // No children
 		),
-		NULL
+		NULL // Done with children
 	);
+	puts(XML_as_text(my_xml));
+	XML child = XML_get_child(my_xml, "child-tag");  // Yields <child-tag/>
+	puts(XML_as_text(child));
+	const char* val = XML_get_attr(my_xml, "attr-name-2");  // Yields "attr-value-2"
+	puts(val);
 }
-
-
+/*
 int main () {
-	XML myxml = XML_test();
-	const char* xmlstr = XML_as_text(myxml);
-	printf("name: %s, n_attrs: %u, n_contents: %u\n", myxml.tag->name, myxml.tag->n_attrs, myxml.tag->n_contents);
-	printf("%u\n", XML_strlen(myxml));
-	printf("%u\n", strlen(xmlstr));
-	puts(xmlstr);
-	XML mych = XML_get_child(myxml, "query");
-	mych = XML_get_child(mych, "position");
-	puts(XML_get_attr(mych, "long"));
+	XML_test();
 	return 0;
 }
 */
-
