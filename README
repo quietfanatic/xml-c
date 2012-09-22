@@ -5,7 +5,7 @@ Tiny XML tree manipulator written in C.
 
 Requirements: libgc
 
-
+See the top of xml.c for usage details.
 
 
 
