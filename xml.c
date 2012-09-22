@@ -34,7 +34,15 @@ XML child = XML_get_child(my_xml, "child-tag")  // Yields <child-tag/>
 You can get the value of an attribute of a tag by name with XML_get_attr()
 const char* val = XML_get_attr(my_xml, "attr-name-2")  // Yields "attr-value-2"
 
-TODO: Parsing a string into XML will come later.
+
+You can parse an XML string with XML_parse()
+XML parsed = XML_parse("<wwxtp><query><command>TEST</command><position lat=\"23.01515\" long=\"-15.132\"/></query></wwxtp>");
+After that, you must check that the parse succeeded.
+if (!XML_is_valid(parsed)) {
+	fprintf(stderr, "Syntax error in XML.\n");
+	send_error_message();
+}
+
 
 BUGS: Giving an empty string as one of the children in XML_tag will confuse
  the parser, since it'll think it's an XML tag.  It's not possible to work
