@@ -58,6 +58,7 @@ BUGS: Giving an empty string as one of the children in XML_tag will confuse
 #include <gc/gc.h>
 #include <ctype.h>
 
+typedef unsigned int uint;
 typedef union XML XML;
 
 typedef struct XML_Attr {
@@ -447,6 +448,7 @@ void XML_test () {
 }
 /*
 int main () {
+    GC_init();
 	XML_test();
 	return 0;
 }
