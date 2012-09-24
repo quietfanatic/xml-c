@@ -245,32 +245,29 @@ const char* XML_as_text (XML xml) {
 XML XML_tag (const char* name, ...) {
 	va_list args;
 	va_start(args, name);
-	va_list args_counter = args;
-	uint n_attrs = 0;
-	while (va_arg(args_counter, const char*)) n_attrs++;
-	if (n_attrs % 2) {
-		fprintf(stderr, "Error: Odd number of strings given in XML attribute list\n");
-		exit(1);
-	}
-	n_attrs /= 2;
-	uint n_contents = 0;
-	while (va_arg(args_counter, void*)) n_contents++;
 	XML_Tag* r = GC_malloc(sizeof(XML_Tag));
-	r->is_str = 0;
+    r->is_str = 0;
 	r->name = name;
-	r->n_attrs = n_attrs;
-	r->attrs = GC_malloc(n_attrs * sizeof(XML_Attr));
-	uint i;
-	for (i = 0; i < n_attrs; i++) {
-		r->attrs[i].name = va_arg(args, const char*);
-		r->attrs[i].value = va_arg(args, const char*);
-	}
-	va_arg(args, const char*);  // skip separating NULL
-	r->n_contents = n_contents;
-	r->contents = GC_malloc(n_contents * sizeof(XML));
-	for (i = 0; i < n_contents; i++) {
-		r->contents[i] = (XML)va_arg(args, XML_Tag*);
-	}
+	r->n_attrs = 0;
+    r->attrs = GC_malloc(0);
+    const char* attr_name;
+	while (attr_name = va_arg(args, const char*)) {
+        r->attrs = GC_realloc(r->attrs, (r->n_attrs+1) * sizeof(XML_Attr));
+        r->attrs[r->n_attrs].name = attr_name;
+        if (!(r->attrs[r->n_attrs].value = va_arg(args, const char*))) {
+            fprintf(stderr, "XML error: odd number of strings given in attribute list\n");
+            exit(1);
+        }
+        r->n_attrs++;
+    }
+    r->n_contents = 0;
+    r->contents = GC_malloc(0);
+    XML content;
+	while (content.tag = (XML_Tag*)va_arg(args, void*)) {
+        r->contents = GC_realloc(r->contents, (r->n_contents+1) * sizeof(XML));
+        r->contents[r->n_contents] = content;
+        r->n_contents++;
+    }
 	va_end(args);
 	return (XML)r;
 }
@@ -448,9 +445,9 @@ void XML_test () {
 	}
 	puts(XML_as_text(parsed));
 }
-/*
+
 int main () {
 	XML_test();
 	return 0;
 }
-*/
+
