@@ -445,9 +445,9 @@ void XML_test () {
 	}
 	puts(XML_as_text(parsed));
 }
-
+/*
 int main () {
 	XML_test();
 	return 0;
 }
-
+*/
